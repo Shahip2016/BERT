@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 from .config import BertConfig
 from .bert_heads import BertForPreTraining
 from .dataset import BertDataset, BertTokenizer
+from .optim import ScheduledOptim
+import torch.optim as optim
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,7 +20,8 @@ def train(args):
     dataset = BertDataset(args.corpus_path, tokenizer)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    optim_adam = optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.weight_decay)
+    optimizer = ScheduledOptim(optim_adam, config.hidden_size, n_warmup_steps=args.warmup_steps)
 
     print("Starting training...")
     for epoch in range(args.epochs):
@@ -35,7 +38,7 @@ def train(args):
             )
 
             loss.backward()
-            optimizer.step()
+            optimizer.step_and_update_lr()
 
             if i % 10 == 0:
                 print(f"Epoch: {epoch}, Step: {i}, Loss: {loss.item()}")
@@ -49,6 +52,10 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--warmup_steps", type=int, default=10000)
+    parser.add_argument("--adam_beta1", type=float, default=0.9)
+    parser.add_argument("--adam_beta2", type=float, default=0.999)
     args = parser.parse_args()
     
     # Create a dummy corpus if not exists for testing
